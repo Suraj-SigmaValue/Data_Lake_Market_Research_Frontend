@@ -26,12 +26,21 @@ type PipelineResult = {
   location: string;
   location_identification: LocationIdentification;
   property_categories: PropertyCategories;
+  error_message?: string;
+};
+
+type TokenUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
 };
 
 type AnalyzeResponse = {
   location: string;
   openai_result: PipelineResult;
   groq_result: PipelineResult;
+  openai_tokens: TokenUsage;
+  groq_tokens: TokenUsage;
 };
 
 export default function Home() {
@@ -43,12 +52,13 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalyzeResponse | null>(null);
-  const [trendResults, setTrendResults] = useState<{openai_trend: string, groq_trend: string} | null>(null);
-  const [appreciationResults, setAppreciationResults] = useState<{openai_appreciation: string, groq_appreciation: string} | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<{openai_analysis: string, groq_analysis: string} | null>(null);
+  const [trendResults, setTrendResults] = useState<{openai_trend: string, groq_trend: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
+  const [appreciationResults, setAppreciationResults] = useState<{openai_appreciation: string, groq_appreciation: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<{openai_analysis: string, groq_analysis: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [showOptions, setShowOptions] = useState(false);
+  const [activeTab, setActiveTab] = useState<"pricePoint" | "trend" | "appreciation" | "analysis" | null>(null);
   const [clickedOptions, setClickedOptions] = useState({
     pricePoint: false,
     trend: false,
@@ -58,6 +68,7 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setShowOptions(true);
+    setActiveTab(null);
     setResults(null);
     setTrendResults(null);
     setAppreciationResults(null);
@@ -65,7 +76,10 @@ export default function Home() {
   };
 
   const runPricePoint = async () => {
+    setActiveTab("pricePoint");
     setClickedOptions(prev => ({ ...prev, pricePoint: true }));
+    if (results) return;
+
     setLoading(true);
     setError(null);
 
@@ -89,7 +103,10 @@ export default function Home() {
   };
 
   const handleTrendClick = async () => {
+    setActiveTab("trend");
     setClickedOptions(prev => ({ ...prev, trend: true }));
+    if (trendResults) return;
+
     setLoading(true);
     setError(null);
 
@@ -113,7 +130,10 @@ export default function Home() {
   };
 
   const handleAppreciationClick = async () => {
+    setActiveTab("appreciation");
     setClickedOptions(prev => ({ ...prev, appreciation: true }));
+    if (appreciationResults) return;
+
     setLoading(true);
     setError(null);
 
@@ -137,6 +157,9 @@ export default function Home() {
   };
 
   const handleAnalysisClick = async () => {
+    setActiveTab("analysis");
+    if (analysisResults) return;
+
     setLoading(true);
     setError(null);
 
@@ -211,6 +234,45 @@ export default function Home() {
     );
   };
 
+  const getCumulativeTokens = (provider: "openai" | "groq") => {
+    let input = 0, output = 0, total = 0;
+    
+    if (results) {
+      const t = provider === "openai" ? results.openai_tokens : results.groq_tokens;
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+    }
+    if (trendResults) {
+      const t = provider === "openai" ? trendResults.openai_tokens : trendResults.groq_tokens;
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+    }
+    if (appreciationResults) {
+      const t = provider === "openai" ? appreciationResults.openai_tokens : appreciationResults.groq_tokens;
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+    }
+    if (analysisResults) {
+      const t = provider === "openai" ? analysisResults.openai_tokens : analysisResults.groq_tokens;
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+    }
+    return { input_tokens: input, output_tokens: output, total_tokens: total };
+  };
+
+  const renderTokenUsage = (current: TokenUsage | undefined, provider: "openai" | "groq") => {
+    if (!current) return null;
+    const cumulative = getCumulativeTokens(provider);
+    return (
+      <div className="mt-4 p-3 bg-[#11131c] border border-[#334155] rounded-lg text-xs font-mono text-gray-400 shadow-inner">
+        <div className="flex justify-between border-b border-[#334155] pb-2 mb-2">
+          <span>Current Section:</span>
+          <span className="text-[#3b82f6]">IN: {current.input_tokens} | OUT: {current.output_tokens} | TOT: {current.total_tokens}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-300">Cumulative:</span>
+          <span className="text-[#10b981]">IN: {cumulative.input_tokens} | OUT: {cumulative.output_tokens} | TOT: {cumulative.total_tokens}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-[#0f111a] text-gray-100 font-sans p-6 md:p-10 selection:bg-[#6366f1] selection:text-white">
       {/* Header */}
@@ -220,125 +282,273 @@ export default function Home() {
         </h1>
         <p className="text-gray-400 text-lg">4-Stage Pipeline via OpenAI & Bedrock</p>
       </header>
-
-      {/* Input Section */}
-      <section className="max-w-3xl mx-auto bg-[#1a1d29] border border-[#334155] rounded-xl p-6 md:p-8 shadow-2xl mb-12 relative overflow-hidden">
+         {/* Input & Results Section */}
+      <section className={`mx-auto bg-[#1a1d29] border border-[#334155] rounded-xl p-6 md:p-8 shadow-2xl mb-12 relative overflow-hidden transition-all duration-500 ${showOptions ? 'w-full max-w-[1800px]' : 'max-w-3xl'}`}>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
         
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="latitude" className="text-sm font-medium text-gray-400">
-                Latitude (Box 1)
-              </label>
-              <input
-                id="latitude"
-                type="text"
-                required
-                placeholder="e.g. 18.602"
-                className="bg-[#222636] border border-[#334155] rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all"
-                value={formData.latitude}
-                onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-              />
+        <div className={showOptions ? "max-w-3xl mx-auto mb-8" : ""}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="latitude" className="text-sm font-medium text-gray-400">
+                  Latitude (Box 1)
+                </label>
+                <input
+                  id="latitude"
+                  type="text"
+                  required
+                  placeholder="e.g. 18.602"
+                  className="bg-[#222636] border border-[#334155] rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all"
+                  value={formData.latitude}
+                  onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="longitude" className="text-sm font-medium text-gray-400">
+                  Longitude (Box 2)
+                </label>
+                <input
+                  id="longitude"
+                  type="text"
+                  required
+                  placeholder="e.g. 73.757"
+                  className="bg-[#222636] border border-[#334155] rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all"
+                  value={formData.longitude}
+                  onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                />
+              </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label htmlFor="longitude" className="text-sm font-medium text-gray-400">
-                Longitude (Box 2)
+              <label htmlFor="location" className="text-sm font-medium text-gray-400">
+                Location (Box 3)
               </label>
               <input
-                id="longitude"
+                id="location"
                 type="text"
                 required
-                placeholder="e.g. 73.757"
+                placeholder="e.g. Wakad, Pune"
                 className="bg-[#222636] border border-[#334155] rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all"
-                value={formData.longitude}
-                onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="location" className="text-sm font-medium text-gray-400">
-              Location (Box 3)
-            </label>
-            <input
-              id="location"
-              type="text"
-              required
-              placeholder="e.g. Wakad, Pune"
-              className="bg-[#222636] border border-[#334155] rounded-lg px-4 py-3 text-gray-100 focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1] transition-all"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-            />
-          </div>
-          
-          {!showOptions && (
-            <button
-              type="submit"
-              className="mt-2 w-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white font-semibold py-3.5 rounded-lg shadow-lg hover:shadow-[#6366f1]/25 hover:opacity-95 transition-all"
-            >
-              Generate Insights
-            </button>
-          )}
-        </form>
-
-        {showOptions && (
-          <div className="mt-8 flex flex-col gap-4 border-t border-[#334155] pt-6">
-            <h3 className="text-lg font-medium text-gray-200 text-center mb-4">Select Insight Options</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                type="button"
-                onClick={runPricePoint}
-                disabled={loading}
-                className={`py-3 px-4 rounded-lg font-medium transition-all flex justify-center items-center ${
-                  clickedOptions.pricePoint 
-                    ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
-                    : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
-                } ${loading ? "opacity-70 cursor-not-allowed" : ""}`}
-              >
-                {loading ? (
-                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  "Price Point"
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleTrendClick}
-                className={`py-3 px-4 rounded-lg font-medium transition-all ${
-                  clickedOptions.trend 
-                    ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
-                    : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
-                }`}
-              >
-                Price Trend Mircromarket
-              </button>
-              <button
-                type="button"
-                onClick={handleAppreciationClick}
-                className={`py-3 px-4 rounded-lg font-medium transition-all ${
-                  clickedOptions.appreciation 
-                    ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
-                    : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
-                }`}
-              >
-                Appreciation Potential
-              </button>
             </div>
             
-            {allClicked && (
-              <div className="mt-6 flex justify-center animate-in fade-in zoom-in duration-300">
+            {!showOptions && (
+              <button
+                type="submit"
+                className="mt-2 w-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white font-semibold py-3.5 rounded-lg shadow-lg hover:shadow-[#6366f1]/25 hover:opacity-95 transition-all"
+              >
+                Generate Insights
+              </button>
+            )}
+          </form>
+        </div>
+
+        {showOptions && (
+          <div className="mt-8 border-t border-[#334155] pt-8">
+            <div className="flex flex-col lg:flex-row gap-6 w-full">
+              
+              {/* Left Panel (10%) */}
+              <div className="w-full lg:w-[15%] xl:w-[12%] flex flex-col gap-3 shrink-0">
+                <h3 className="text-sm uppercase tracking-wider font-semibold text-gray-400 mb-2">Options</h3>
                 <button
                   type="button"
-                  onClick={handleAnalysisClick}
-                  className="w-full md:w-1/2 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-bold shadow-lg shadow-emerald-500/20 hover:opacity-90 transition-all"
+                  onClick={runPricePoint}
+                  disabled={loading && !results}
+                  className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex justify-center items-center text-center ${
+                    activeTab === "pricePoint"
+                      ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
+                      : clickedOptions.pricePoint 
+                        ? "bg-[#2a2f42] text-[#8b5cf6] border border-[#334155] hover:bg-[#32384f]"
+                        : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
+                  } ${loading && !results && activeTab === "pricePoint" ? "opacity-70 cursor-not-allowed" : ""}`}
                 >
-                  Analysis
+                  Price Point
                 </button>
+                <button
+                  type="button"
+                  onClick={handleTrendClick}
+                  disabled={loading && !trendResults}
+                  className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex justify-center items-center text-center ${
+                    activeTab === "trend"
+                      ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
+                      : clickedOptions.trend
+                        ? "bg-[#2a2f42] text-[#8b5cf6] border border-[#334155] hover:bg-[#32384f]"
+                        : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
+                  } ${loading && !trendResults && activeTab === "trend" ? "opacity-70 cursor-not-allowed" : ""}`}
+                >
+                  Price Trend Mircromarket
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAppreciationClick}
+                  disabled={loading && !appreciationResults}
+                  className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex justify-center items-center text-center ${
+                    activeTab === "appreciation"
+                      ? "bg-[#6366f1] text-white border border-[#8b5cf6]" 
+                      : clickedOptions.appreciation
+                        ? "bg-[#2a2f42] text-[#8b5cf6] border border-[#334155] hover:bg-[#32384f]"
+                        : "bg-[#222636] text-gray-300 border border-[#334155] hover:bg-[#2a2f42]"
+                  } ${loading && !appreciationResults && activeTab === "appreciation" ? "opacity-70 cursor-not-allowed" : ""}`}
+                >
+                  Appreciation Potential
+                </button>
+
+                {allClicked && (
+                  <div className="mt-4 animate-in fade-in zoom-in duration-300">
+                    <button
+                      type="button"
+                      onClick={handleAnalysisClick}
+                      disabled={loading && !analysisResults}
+                      className={`w-full py-3 px-3 rounded-lg text-sm font-bold transition-all flex justify-center items-center text-center shadow-lg ${
+                        activeTab === "analysis"
+                          ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-emerald-500/20"
+                          : analysisResults
+                            ? "bg-[#2a2f42] text-teal-400 border border-[#334155] hover:bg-[#32384f]"
+                            : "bg-gradient-to-r from-emerald-600 to-teal-600 text-gray-200 hover:opacity-90 shadow-emerald-500/10"
+                      }`}
+                    >
+                      Analysis
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+              
+              {/* Right Panels Container */}
+              <div className="flex-1 flex flex-col lg:flex-row gap-6 min-w-0">
+                
+                {/* OpenAI Column (45%) */}
+                <div className="flex-1 flex flex-col gap-6 min-w-0 w-full lg:w-1/2">
+                  <h3 className="text-xl font-semibold text-center text-[#a78bfa] mb-2 bg-[#1a1d29] py-2 rounded-lg border border-[#334155]">
+                    🤖 OpenAI Results
+                  </h3>
+                  
+                  {activeTab === "pricePoint" && results && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Price Point</h4>
+                      </div>
+                      <div className="p-4 flex-1">
+                        {results.openai_result.error_message ? (
+                          <div className="text-red-400 text-sm font-medium p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            {results.openai_result.error_message}
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-gray-400 text-sm font-medium mb-3">Location Identification</p>
+                            {renderLocationInfo(results.openai_result.location_identification)}
+                            {renderCategoryTables(results.openai_result.property_categories)}
+                          </>
+                        )}
+                        {renderTokenUsage(results.openai_tokens, "openai")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "trend" && trendResults && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Trend Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: trendResults.openai_trend }} />
+                        {renderTokenUsage(trendResults.openai_tokens, "openai")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "appreciation" && appreciationResults && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Appreciation Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: appreciationResults.openai_appreciation }} />
+                        {renderTokenUsage(appreciationResults.openai_tokens, "openai")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "analysis" && analysisResults && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Final Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: analysisResults.openai_analysis }} />
+                        {renderTokenUsage(analysisResults.openai_tokens, "openai")}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Groq Column (45%) */}
+                <div className="flex-1 flex flex-col gap-6 min-w-0 w-full lg:w-1/2">
+                  <h3 className="text-xl font-semibold text-center text-[#10b981] mb-2 bg-[#1a1d29] py-2 rounded-lg border border-[#334155]">
+                    ⚡ Groq + DDG Results
+                  </h3>
+                  
+                  {activeTab === "pricePoint" && results && results.groq_result && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Price Point</h4>
+                      </div>
+                      <div className="p-4 flex-1">
+                        {results.groq_result.error_message ? (
+                          <div className="text-red-400 text-sm font-medium p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            {results.groq_result.error_message}
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-gray-400 text-sm font-medium mb-3">Location Identification</p>
+                            {renderLocationInfo(results.groq_result.location_identification)}
+                            {renderCategoryTables(results.groq_result.property_categories)}
+                          </>
+                        )}
+                        {renderTokenUsage(results.groq_tokens, "groq")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "trend" && trendResults && trendResults.groq_trend && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Trend Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: trendResults.groq_trend }} />
+                        {renderTokenUsage(trendResults.groq_tokens, "groq")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "appreciation" && appreciationResults && appreciationResults.groq_appreciation && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Appreciation Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: appreciationResults.groq_appreciation }} />
+                        {renderTokenUsage(appreciationResults.groq_tokens, "groq")}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === "analysis" && analysisResults && analysisResults.groq_analysis && (
+                    <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
+                      <div className="p-4 border-b border-[#334155] bg-[#222636]">
+                        <h4 className="text-md font-semibold text-gray-200">Final Analysis</h4>
+                      </div>
+                      <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
+                        <div dangerouslySetInnerHTML={{ __html: analysisResults.groq_analysis }} />
+                        {renderTokenUsage(analysisResults.groq_tokens, "groq")}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -347,136 +557,6 @@ export default function Home() {
       {error && (
         <div className="max-w-3xl mx-auto mb-10 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-center">
           {error}
-        </div>
-      )}
-
-      {/* Results Section (Dual Panel) */}
-      {results && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1800px] mx-auto pb-20">
-          
-          {/* OpenAI Panel */}
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#a78bfa]">
-                <span>🤖</span> OpenAI Analysis (gpt-4o)
-              </h2>
-            </div>
-            <div className="p-6 flex-1">
-              <p className="text-gray-400 font-medium mb-3">Location Identification</p>
-              {renderLocationInfo(results.openai_result.location_identification)}
-              
-              {renderCategoryTables(results.openai_result.property_categories)}
-            </div>
-          </div>
-
-          {/* Groq Panel */}
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#10b981]">
-                <span>⚡</span> Groq + DDG Analysis (Llama-3.3-70b-versatile)
-              </h2>
-            </div>
-            <div className="p-6 flex-1">
-              <p className="text-gray-400 font-medium mb-3">Location Identification</p>
-              {results.groq_result && renderLocationInfo(results.groq_result.location_identification)}
-              
-              {results.groq_result && renderCategoryTables(results.groq_result.property_categories)}
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* Trend Results Section */}
-      {trendResults && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1800px] mx-auto pb-20">
-          
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#a78bfa]">
-                <span>🤖</span> OpenAI Trend Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: trendResults.openai_trend }}
-            />
-          </div>
-
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#10b981]">
-                <span>⚡</span> Groq Trend Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: trendResults.groq_trend }}
-            />
-          </div>
-
-        </div>
-      )}
-
-      {/* Appreciation Results Section */}
-      {appreciationResults && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1800px] mx-auto pb-20">
-          
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#a78bfa]">
-                <span>🤖</span> OpenAI Appreciation Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: appreciationResults.openai_appreciation }}
-            />
-          </div>
-
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#10b981]">
-                <span>⚡</span> Groq Appreciation Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: appreciationResults.groq_appreciation }}
-            />
-          </div>
-
-        </div>
-      )}
-
-      {/* Final Analysis Results Section */}
-      {analysisResults && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1800px] mx-auto pb-20">
-          
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#a78bfa]">
-                <span>🤖</span> OpenAI Final Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: analysisResults.openai_analysis }}
-            />
-          </div>
-
-          <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
-            <div className="p-6 border-b border-[#334155] bg-gradient-to-r from-[#1a1d29] to-[#222636]">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-[#10b981]">
-                <span>⚡</span> Groq Final Analysis
-              </h2>
-            </div>
-            <div 
-              className="p-6 flex-1 text-gray-300 overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: analysisResults.groq_analysis }}
-            />
-          </div>
-
         </div>
       )}
     </main>
