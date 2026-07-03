@@ -28,9 +28,19 @@ type PropertyListing = {
     url?: string;
     portal?: string;
   }[];
+  portal_listings?: {
+    portal: string;
+    url: string;
+  }[];
 };
 
 export default function PriceTable({ data }: { data: PropertyListing[] }) {
+  const [expandedProjects, setExpandedProjects] = React.useState<Record<string, boolean>>({});
+
+  const toggleProject = (projectName: string) => {
+    setExpandedProjects(prev => ({ ...prev, [projectName]: !prev[projectName] }));
+  };
+
   if (!data || data.length === 0) {
     return <div className="p-4 text-sm text-gray-500">No listings found for this category.</div>;
   }
@@ -160,7 +170,38 @@ export default function PriceTable({ data }: { data: PropertyListing[] }) {
 
               return (
                 <tr key={groupIdx} className="hover:bg-[#2a2e40] transition-colors bg-[#1e293b]/50">
-                  <td className="px-4 py-3 font-semibold text-gray-100">{projectName || "N/A"}</td>
+                  <td className="px-4 py-3 align-top">
+                    <div 
+                      className="font-semibold text-gray-100 cursor-pointer flex items-center gap-2 hover:text-indigo-300 transition-colors"
+                      onClick={() => toggleProject(projectName || "")}
+                      title="Click to view listing URLs"
+                    >
+                      {projectName || "N/A"}
+                      {listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {expandedProjects[projectName || ""] ? '▼' : '▶'}
+                        </span>
+                      )}
+                    </div>
+                    {expandedProjects[projectName || ""] && listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mt-2 pl-2 border-l-2 border-[#38bdf8]/30">
+                        {listings[0].portal_listings.map((pl, idx) => (
+                          <div key={idx} className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400 font-medium w-20 truncate">{pl.portal}</span>
+                            <a
+                              href={formatUrl(pl.url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-[#38bdf8] hover:underline hover:text-[#7dd3fc] truncate max-w-[200px]"
+                              title={pl.url}
+                            >
+                              - {formatUrl(pl.url)}
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-300">
                     {listings[0]?.property_type || "N/A"} <span className="text-xs text-gray-400 font-medium">({allTransactions.length} listings)</span>
                   </td>
@@ -201,7 +242,38 @@ export default function PriceTable({ data }: { data: PropertyListing[] }) {
             const singleLink = row?.url || rootUrl;
             return (
               <tr key={groupIdx} className="hover:bg-[#2a2e40] transition-colors">
-                <td className="px-4 py-3 font-semibold text-gray-100">{projectName || "N/A"}</td>
+                <td className="px-4 py-3 align-top">
+                  <div 
+                    className="font-semibold text-gray-100 cursor-pointer flex items-center gap-2 hover:text-indigo-300 transition-colors"
+                    onClick={() => toggleProject(projectName || "")}
+                    title="Click to view listing URLs"
+                  >
+                    {projectName || "N/A"}
+                    {listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                      <span className="text-xs text-gray-500">
+                        {expandedProjects[projectName || ""] ? '▼' : '▶'}
+                      </span>
+                    )}
+                  </div>
+                  {expandedProjects[projectName || ""] && listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-2 pl-2 border-l-2 border-[#38bdf8]/30">
+                      {listings[0].portal_listings.map((pl, idx) => (
+                        <div key={idx} className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400 font-medium w-20 truncate">{pl.portal}</span>
+                          <a
+                            href={formatUrl(pl.url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-[#38bdf8] hover:underline hover:text-[#7dd3fc] truncate max-w-[200px]"
+                            title={pl.url}
+                          >
+                            - {formatUrl(pl.url)}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-gray-300">
                   {listings[0]?.property_type || "N/A"} <span className="text-xs text-gray-500">({listings[0]?.listing_type || "N/A"})</span>
                 </td>
