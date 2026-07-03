@@ -81,7 +81,7 @@ export default function PriceTable({ data }: { data: PropertyListing[] }) {
             <th className="px-4 py-3 font-medium">Project Name</th>
             <th className="px-4 py-3 font-medium">Type</th>
             <th className="px-4 py-3 font-medium">Total Price</th>
-            <th className="px-4 py-3 font-medium">Net Carpet Area</th>
+            <th className="px-4 py-3 font-medium">Area Type</th>
             <th className="px-4 py-3 font-medium">Rate</th>
             <th className="px-4 py-3 font-medium">Distance</th>
             <th className="px-4 py-3 font-medium">Portal / URL</th>

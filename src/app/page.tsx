@@ -219,7 +219,7 @@ export default function Home() {
           </div>
         </div>
         <div>
-          <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏬 Retail Shops</h3>
+          <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏬 Retail/Shops</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
             <PriceTable data={categories.retail} />
           </div>
