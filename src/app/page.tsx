@@ -33,6 +33,7 @@ type TokenUsage = {
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
+  call_count?: number;
 };
 
 type AnalyzeResponse = {
@@ -59,6 +60,10 @@ export default function Home() {
 
   const [showOptions, setShowOptions] = useState(false);
   const [activeTab, setActiveTab] = useState<"pricePoint" | "trend" | "appreciation" | "analysis" | null>(null);
+  const [extractionTokens, setExtractionTokens] = useState<Record<string, TokenUsage>>({
+    openai: { input_tokens: 0, output_tokens: 0, total_tokens: 0, call_count: 0 },
+    groq: { input_tokens: 0, output_tokens: 0, total_tokens: 0, call_count: 0 }
+  });
   const [clickedOptions, setClickedOptions] = useState({
     pricePoint: false,
     trend: false,
@@ -202,32 +207,32 @@ export default function Home() {
     );
   };
 
-  const renderCategoryTables = (categories: PropertyCategories) => {
+  const renderCategoryTables = (categories: PropertyCategories, provider: "openai" | "groq" = "openai") => {
     if (!categories) return null;
     return (
       <div className="space-y-6">
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏠 Residential Flats</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.residential} />
+            <PriceTable data={categories.residential} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏢 Office Spaces</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.office} />
+            <PriceTable data={categories.office} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏬 Retail/Shops</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.retail} />
+            <PriceTable data={categories.retail} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏞️ Land / Plots</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.land} />
+            <PriceTable data={categories.land} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
           </div>
         </div>
       </div>
@@ -235,25 +240,46 @@ export default function Home() {
   };
 
   const getCumulativeTokens = (provider: "openai" | "groq") => {
-    let input = 0, output = 0, total = 0;
+    let input = 0, output = 0, total = 0, calls = 0;
     
     if (results) {
       const t = provider === "openai" ? results.openai_tokens : results.groq_tokens;
-      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (trendResults) {
       const t = provider === "openai" ? trendResults.openai_tokens : trendResults.groq_tokens;
-      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (appreciationResults) {
       const t = provider === "openai" ? appreciationResults.openai_tokens : appreciationResults.groq_tokens;
-      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (analysisResults) {
       const t = provider === "openai" ? analysisResults.openai_tokens : analysisResults.groq_tokens;
-      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; }
+      if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
-    return { input_tokens: input, output_tokens: output, total_tokens: total };
+    
+    // Add extraction tokens
+    if (extractionTokens && extractionTokens[provider]) {
+      input += extractionTokens[provider].input_tokens; 
+      output += extractionTokens[provider].output_tokens; 
+      total += extractionTokens[provider].total_tokens; 
+      calls += extractionTokens[provider].call_count;
+    }
+    
+    return { input_tokens: input, output_tokens: output, total_tokens: total, call_count: calls };
+  };
+
+  const handleTokensUsed = (tokens: TokenUsage, provider: "openai" | "groq") => {
+    setExtractionTokens(prev => ({
+      ...prev,
+      [provider]: {
+        input_tokens: prev[provider].input_tokens + tokens.input_tokens,
+        output_tokens: prev[provider].output_tokens + tokens.output_tokens,
+        total_tokens: prev[provider].total_tokens + tokens.total_tokens,
+        call_count: prev[provider].call_count + (tokens.call_count || 1)
+      }
+    }));
   };
 
   const renderTokenUsage = (current: TokenUsage | undefined, provider: "openai" | "groq") => {
@@ -263,11 +289,11 @@ export default function Home() {
       <div className="mt-4 p-3 bg-[#11131c] border border-[#334155] rounded-lg text-xs font-mono text-gray-400 shadow-inner">
         <div className="flex justify-between border-b border-[#334155] pb-2 mb-2">
           <span>Current Section:</span>
-          <span className="text-[#3b82f6]">IN: {current.input_tokens} | OUT: {current.output_tokens} | TOT: {current.total_tokens}</span>
+          <span className="text-[#3b82f6]">IN: {current.input_tokens} | OUT: {current.output_tokens} | TOT: {current.total_tokens} | CALLS: {current.call_count || 1}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-300">Cumulative:</span>
-          <span className="text-[#10b981]">IN: {cumulative.input_tokens} | OUT: {cumulative.output_tokens} | TOT: {cumulative.total_tokens}</span>
+          <span className="text-[#10b981]">IN: {cumulative.input_tokens} | OUT: {cumulative.output_tokens} | TOT: {cumulative.total_tokens} | CALLS: {cumulative.call_count}</span>
         </div>
       </div>
     );
@@ -437,7 +463,7 @@ export default function Home() {
                           <>
                             <p className="text-gray-400 text-sm font-medium mb-3">Location Identification</p>
                             {renderLocationInfo(results.openai_result.location_identification)}
-                            {renderCategoryTables(results.openai_result.property_categories)}
+                            {renderCategoryTables(results.openai_result.property_categories, "openai")}
                           </>
                         )}
                         {renderTokenUsage(results.openai_tokens, "openai")}
@@ -485,7 +511,7 @@ export default function Home() {
                 {/* Groq Column (45%) */}
                 <div className="flex-1 flex flex-col gap-6 min-w-0 w-full lg:w-1/2">
                   <h3 className="text-xl font-semibold text-center text-[#10b981] mb-2 bg-[#1a1d29] py-2 rounded-lg border border-[#334155]">
-                    ⚡ Groq + DDG Results
+                    ⚡ Groq
                   </h3>
                   
                   {activeTab === "pricePoint" && results && results.groq_result && (
@@ -502,7 +528,7 @@ export default function Home() {
                           <>
                             <p className="text-gray-400 text-sm font-medium mb-3">Location Identification</p>
                             {renderLocationInfo(results.groq_result.location_identification)}
-                            {renderCategoryTables(results.groq_result.property_categories)}
+                            {renderCategoryTables(results.groq_result.property_categories, "groq")}
                           </>
                         )}
                         {renderTokenUsage(results.groq_tokens, "groq")}

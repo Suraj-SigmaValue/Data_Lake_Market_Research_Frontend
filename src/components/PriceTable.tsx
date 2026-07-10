@@ -1,78 +1,81 @@
-import React, { Fragment } from 'react';
+import React, { Fragment, useState } from 'react';
+
+type PortalListing = {
+  portal: string;
+  url: string;
+  project_name?: string;
+  title?: string;
+  price?: string;
+  currency?: string;
+  area?: string;
+  area_type?: string;
+  location?: string;
+};
 
 type PropertyListing = {
   project_name?: string;
   property_type?: string;
-  listing_type?: string;
-  
-  // Flat properties (Old structure)
-  total_price?: string;
-  area?: string;
-  area_unit?: string;
-  area_basis?: string;
-  calculated_rate?: string;
-  rate_unit?: string;
-  portal?: string;
-  url?: string;
   distance_from_coordinate?: string;
-
-  // Nested properties (New structure)
-  average_project_rate?: string;
-  transactions?: {
-    total_price?: string;
-    area?: string;
-    area_unit?: string;
-    area_basis?: string;
-    calculated_rate?: string;
-    normalized_net_carpet_rate?: string;
-    url?: string;
-    portal?: string;
-  }[];
-  portal_listings?: {
-    portal: string;
-    url: string;
-  }[];
+  portal_listings?: PortalListing[];
 };
 
-export default function PriceTable({ data }: { data: PropertyListing[] }) {
-  const [expandedProjects, setExpandedProjects] = React.useState<Record<string, boolean>>({});
+export default function PriceTable({ data, location, provider = "openai", onTokensUsed }: { data: PropertyListing[], location: string, provider?: string, onTokensUsed?: (tokens: any) => void }) {
+  const [expandedUrls, setExpandedUrls] = useState<Record<string, boolean>>({});
+  const [extractedListings, setExtractedListings] = useState<Record<string, PortalListing[]>>({});
+  const [loadingListings, setLoadingListings] = useState<Record<string, boolean>>({});
+  const [showListingsTable, setShowListingsTable] = useState<Record<string, boolean>>({});
 
-  const toggleProject = (projectName: string) => {
-    setExpandedProjects(prev => ({ ...prev, [projectName]: !prev[projectName] }));
+  const toggleUrls = (projectName: string) => {
+    setExpandedUrls(prev => ({ ...prev, [projectName]: !prev[projectName] }));
+  };
+
+  const handleExtractListings = async (projectName: string, portalListings: PortalListing[]) => {
+    // If we already extracted them, just toggle the view
+    if (extractedListings[projectName]) {
+      setShowListingsTable(prev => ({ ...prev, [projectName]: !prev[projectName] }));
+      return;
+    }
+
+    setLoadingListings(prev => ({ ...prev, [projectName]: true }));
+    try {
+      const res = await fetch("http://127.0.0.1:8000/extract-listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_name: projectName,
+          location: location,
+          urls: portalListings.map(pl => ({ url: pl.url, portal: pl.portal })),
+          provider: provider
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to extract listings");
+
+      const data = await res.json();
+      setExtractedListings(prev => ({ ...prev, [projectName]: data.listings }));
+      setShowListingsTable(prev => ({ ...prev, [projectName]: true }));
+      if (onTokensUsed && data.token_usage) {
+        onTokensUsed(data.token_usage);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to extract listings for " + projectName);
+    } finally {
+      setLoadingListings(prev => ({ ...prev, [projectName]: false }));
+    }
   };
 
   if (!data || data.length === 0) {
     return <div className="p-4 text-sm text-gray-500">No listings found for this category.</div>;
   }
 
-  // In the new structure, LLM already groups by project. 
-  // We handle both flat and pre-grouped structures seamlessly.
+  // LLM already groups by project. 
   const groupedData = data.reduce((acc, row) => {
     const proj = row.project_name || "Unknown Project";
     if (!acc[proj]) acc[proj] = [];
     acc[proj].push(row);
     return acc;
   }, {} as Record<string, PropertyListing[]>);
-
-  const parseRate = (rateStr?: string) => {
-    if (!rateStr) return 0;
-    const num = parseFloat(rateStr.replace(/[^0-9.]/g, ''));
-    return isNaN(num) ? 0 : num;
-  };
-
-  const parseArea = (areaStr?: string) => {
-    if (!areaStr) return 0;
-    const num = parseFloat(areaStr.replace(/[^0-9.]/g, ''));
-    return isNaN(num) ? 0 : num;
-  };
-
-  const getCarpetArea = (area: number, basis?: string) => {
-    if (!basis) return area;
-    const b = basis.toLowerCase();
-    if (b.includes("super")) return area * 0.7; // Super built-up roughly 70%
-    if (b.includes("built")) return area * 0.85; // Built-up roughly 85%
-    return area; // Net carpet / carpet area
-  };
 
   const formatUrl = (url?: string) => {
     if (!url) return "#";
@@ -90,102 +93,38 @@ export default function PriceTable({ data }: { data: PropertyListing[] }) {
           <tr>
             <th className="px-4 py-3 font-medium">Project Name</th>
             <th className="px-4 py-3 font-medium">Type</th>
-            <th className="px-4 py-3 font-medium">Total Price</th>
-            <th className="px-4 py-3 font-medium">Area Type</th>
-            <th className="px-4 py-3 font-medium">Rate</th>
             <th className="px-4 py-3 font-medium">Distance</th>
-            <th className="px-4 py-3 font-medium">Portal / URL</th>
+            <th className="px-4 py-3 font-medium text-center">Listings</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#334155]">
           {Object.entries(groupedData).map(([projectName, listings], groupIdx) => {
-            
-            // Extract all flat items AND nested transactions into a unified flat list
-            const allTransactions: any[] = [];
-            let avgProjectRateStr = "";
-            let rootDistance = "";
-            let rootRateUnit = "";
-            let rootPortal = "";
-            let rootUrl = "";
-            
-            listings.forEach(listing => {
-              if (listing.average_project_rate) avgProjectRateStr = listing.average_project_rate;
-              if (listing.distance_from_coordinate) rootDistance = listing.distance_from_coordinate;
-              if (listing.rate_unit) rootRateUnit = listing.rate_unit;
-              if (listing.portal) rootPortal = listing.portal;
-              if (listing.url) rootUrl = listing.url;
+            const portalListings = listings[0]?.portal_listings || [];
+            const hasUrls = portalListings.length > 0;
+            const isLoading = loadingListings[projectName];
+            const isShowingTable = showListingsTable[projectName];
+            const extracted = extractedListings[projectName];
 
-              if (listing.transactions && listing.transactions.length > 0) {
-                // Nested format
-                listing.transactions.forEach(t => allTransactions.push(t));
-              } else {
-                // Flat format
-                allTransactions.push(listing);
-              }
-            });
-
-            const hasMultiple = allTransactions.length > 1;
-            let avgRate = parseRate(avgProjectRateStr);
-            let rateUnit = rootRateUnit || listings[0]?.rate_unit || "";
-
-            if (hasMultiple) {
-              let totalRate = 0;
-              let totalArea = 0;
-              let validAreaCount = 0;
-              let validRateCount = 0;
-
-              allTransactions.forEach(item => {
-                const r = parseRate(item.normalized_net_carpet_rate || item.calculated_rate);
-                if (r > 0) {
-                  totalRate += r;
-                  validRateCount++;
-                }
-                const a = parseArea(item.area);
-                if (a > 0) {
-                  totalArea += getCarpetArea(a, item.area_basis);
-                  validAreaCount++;
-                }
-              });
-
-              // If LLM didn't provide an average, we calculate it
-              if (avgRate === 0 && validRateCount > 0) {
-                avgRate = totalRate / validRateCount;
-              }
-              
-              let avgArea = 0;
-              if (validAreaCount > 0) {
-                avgArea = totalArea / validAreaCount;
-              }
-              
-              // Get unique sources
-              const uniqueSources: { portal: string, url: string }[] = [];
-              const seenUrls = new Set<string>();
-              allTransactions.forEach(l => {
-                const link = l.url || rootUrl;
-                if (link && !seenUrls.has(link)) {
-                  seenUrls.add(link);
-                  uniqueSources.push({ portal: l.portal || rootPortal || "Link", url: link });
-                }
-              });
-
-              return (
-                <tr key={groupIdx} className="hover:bg-[#2a2e40] transition-colors bg-[#1e293b]/50">
+            return (
+              <Fragment key={groupIdx}>
+                <tr className="hover:bg-[#2a2e40] transition-colors bg-[#1e293b]/50">
                   <td className="px-4 py-3 align-top">
                     <div 
                       className="font-semibold text-gray-100 cursor-pointer flex items-center gap-2 hover:text-indigo-300 transition-colors"
-                      onClick={() => toggleProject(projectName || "")}
-                      title="Click to view listing URLs"
+                      onClick={() => toggleUrls(projectName)}
+                      title="Click to view raw URLs"
                     >
                       {projectName || "N/A"}
-                      {listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                      {hasUrls && (
                         <span className="text-xs text-gray-500">
-                          {expandedProjects[projectName || ""] ? '▼' : '▶'}
+                          {expandedUrls[projectName] ? '▼' : '▶'}
                         </span>
                       )}
                     </div>
-                    {expandedProjects[projectName || ""] && listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
+                    {/* Render Raw URLs dropdown here */}
+                    {expandedUrls[projectName] && hasUrls && (
                       <div className="flex flex-col gap-1.5 mt-2 pl-2 border-l-2 border-[#38bdf8]/30">
-                        {listings[0].portal_listings.map((pl, idx) => (
+                        {portalListings.map((pl, idx) => (
                           <div key={idx} className="flex items-center gap-1">
                             <span className="text-xs text-gray-400 font-medium w-20 truncate">{pl.portal}</span>
                             <a
@@ -202,109 +141,87 @@ export default function PriceTable({ data }: { data: PropertyListing[] }) {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {listings[0]?.property_type || "N/A"} <span className="text-xs text-gray-400 font-medium">({allTransactions.length} listings)</span>
+                  <td className="px-4 py-3 text-gray-300 align-top">
+                    {listings[0]?.property_type || "N/A"}
                   </td>
-                  <td className="px-4 py-3 text-gray-400 italic">Varies</td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {avgArea > 0 ? `${Math.round(avgArea).toLocaleString()} sqft` : "Varies"}
-                    <div className="text-xs text-gray-400 font-normal mt-1">(Est. Avg Carpet Area)</div>
+                  <td className="px-4 py-3 text-amber-400 font-medium align-top">
+                    {listings[0]?.distance_from_coordinate || "Distance Missing"}
                   </td>
-                  <td className="px-4 py-3 text-[#10b981] font-bold">
-                    {Math.round(avgRate).toLocaleString()} {rateUnit} <span className="text-xs font-normal text-gray-400">(Avg)</span>
-                  </td>
-                  <td className="px-4 py-3 text-amber-400 font-medium">
-                    {rootDistance || listings[0]?.distance_from_coordinate || "Distance Missing"}
-                  </td>
-                  <td className="px-4 py-3 max-w-[200px] flex flex-wrap gap-1">
-                    {uniqueSources.length > 0 ? (
-                      uniqueSources.map((s, i) => (
-                        <a
-                          key={i}
-                          href={formatUrl(s.url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-[#818cf8] bg-[#6366f1]/10 border border-[#6366f1]/20 rounded hover:bg-[#6366f1]/20 transition-colors"
-                        >
-                          🔗 {s.portal}
-                        </a>
-                      ))
+                  <td className="px-4 py-3 text-center align-top">
+                    {hasUrls ? (
+                      <button
+                        onClick={() => handleExtractListings(projectName, portalListings)}
+                        disabled={isLoading}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#38bdf8] bg-[#0284c7]/20 border border-[#0284c7]/30 rounded-md hover:bg-[#0284c7]/40 transition-colors disabled:opacity-50 min-w-[100px]"
+                      >
+                        {isLoading ? (
+                          <span className="animate-pulse">Loading...</span>
+                        ) : isShowingTable ? '▼ Hide' : '📋 View'}
+                      </button>
                     ) : (
-                      <span className="text-gray-400 text-xs italic">No Links</span>
+                      <span className="text-gray-500 text-xs italic">No URLs</span>
                     )}
                   </td>
                 </tr>
-              );
-            }
-
-            // Single listing case
-            const row = allTransactions[0];
-            const singleLink = row?.url || rootUrl;
-            return (
-              <tr key={groupIdx} className="hover:bg-[#2a2e40] transition-colors">
-                <td className="px-4 py-3 align-top">
-                  <div 
-                    className="font-semibold text-gray-100 cursor-pointer flex items-center gap-2 hover:text-indigo-300 transition-colors"
-                    onClick={() => toggleProject(projectName || "")}
-                    title="Click to view listing URLs"
-                  >
-                    {projectName || "N/A"}
-                    {listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
-                      <span className="text-xs text-gray-500">
-                        {expandedProjects[projectName || ""] ? '▼' : '▶'}
-                      </span>
-                    )}
-                  </div>
-                  {expandedProjects[projectName || ""] && listings[0]?.portal_listings && listings[0].portal_listings.length > 0 && (
-                    <div className="flex flex-col gap-1.5 mt-2 pl-2 border-l-2 border-[#38bdf8]/30">
-                      {listings[0].portal_listings.map((pl, idx) => (
-                        <div key={idx} className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400 font-medium w-20 truncate">{pl.portal}</span>
-                          <a
-                            href={formatUrl(pl.url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-[#38bdf8] hover:underline hover:text-[#7dd3fc] truncate max-w-[200px]"
-                            title={pl.url}
-                          >
-                            - {formatUrl(pl.url)}
-                          </a>
+                
+                {/* Nested Extracted Listings Table */}
+                {isShowingTable && extracted && (
+                  <tr>
+                    <td colSpan={4} className="p-0 border-b border-[#334155]">
+                      <div className="bg-[#0f172a] p-4 m-2 rounded-lg border border-[#334155] shadow-inner">
+                        <div className="text-[#a78bfa] font-semibold text-sm mb-3 text-center border-b border-[#334155] pb-2">
+                          📋 {projectName} Extracted Listings
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-300">
-                  {listings[0]?.property_type || "N/A"} <span className="text-xs text-gray-500">({listings[0]?.listing_type || "N/A"})</span>
-                </td>
-                <td className="px-4 py-3 text-[#10b981] font-medium">{row?.total_price || "N/A"}</td>
-                <td className="px-4 py-3 text-gray-300">
-                  {row?.area ? `${row?.area} ${row?.area_unit}` : "N/A"}
-                  <div className="text-xs text-[#a78bfa] font-medium mt-1">
-                    {row?.area_basis || "Net Carpet Area"}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-300">
-                  {avgProjectRateStr ? `${avgProjectRateStr} ${rateUnit}` : (row?.normalized_net_carpet_rate || row?.calculated_rate ? `${row?.normalized_net_carpet_rate || row?.calculated_rate} ${rateUnit}` : "N/A")}
-                </td>
-                <td className="px-4 py-3 text-amber-400 font-medium">
-                  {rootDistance || listings[0]?.distance_from_coordinate || "Distance Missing"}
-                </td>
-                <td className="px-4 py-3">
-                  {singleLink ? (
-                    <a
-                      href={formatUrl(singleLink)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#818cf8] bg-[#6366f1]/10 border border-[#6366f1]/20 rounded hover:bg-[#6366f1]/20 transition-colors"
-                    >
-                      🔗 {row?.portal || rootPortal || "View"}
-                    </a>
-                  ) : (
-                    <span className="text-gray-500 text-xs">{row?.portal || rootPortal || "N/A"}</span>
-                  )}
-                </td>
-              </tr>
+                        {extracted.length === 0 ? (
+                          <div className="text-center text-xs text-gray-500 italic py-2">
+                            Could not extract any detailed listings for this project.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left">
+                              <thead className="text-gray-400 border-b border-[#334155]">
+                                <tr>
+                                  <th className="px-3 py-2 font-medium">Project Name</th>
+                                  <th className="px-3 py-2 font-medium">Location</th>
+                                  <th className="px-3 py-2 font-medium">Area</th>
+                                  <th className="px-3 py-2 font-medium">Unit</th>
+                                  <th className="px-3 py-2 font-medium">Price</th>
+                                  <th className="px-3 py-2 font-medium text-center">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#1e293b]">
+                                {extracted.map((pl, idx) => (
+                                  <tr key={idx} className="hover:bg-[#1e293b]/60 transition-colors">
+                                    <td className="px-3 py-2 text-gray-300 font-medium max-w-[150px] truncate" title={pl.project_name || projectName}>{pl.project_name || projectName}</td>
+                                    <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate" title={pl.location || location}>{pl.location || location}</td>
+                                    <td className="px-3 py-2 text-gray-400">
+                                      {pl.area ? `${pl.area} ${pl.area_type || ''}` : "N/A"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate" title={pl.title}>{pl.title || "N/A"}</td>
+                                    <td className="px-3 py-2 text-emerald-400 font-medium">
+                                      {(pl.currency || "") + (pl.price || "N/A")}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <a
+                                        href={formatUrl(pl.url)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[#38bdf8] hover:text-[#7dd3fc] hover:underline"
+                                      >
+                                        🔗 Open
+                                      </a>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
