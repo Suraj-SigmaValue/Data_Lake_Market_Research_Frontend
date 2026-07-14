@@ -39,9 +39,9 @@ type TokenUsage = {
 type AnalyzeResponse = {
   location: string;
   openai_result: PipelineResult;
-  groq_result: PipelineResult;
+  bedrock_result: PipelineResult;
   openai_tokens: TokenUsage;
-  groq_tokens: TokenUsage;
+  bedrock_tokens: TokenUsage;
 };
 
 export default function Home() {
@@ -53,16 +53,16 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalyzeResponse | null>(null);
-  const [trendResults, setTrendResults] = useState<{openai_trend: string, groq_trend: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
-  const [appreciationResults, setAppreciationResults] = useState<{openai_appreciation: string, groq_appreciation: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<{openai_analysis: string, groq_analysis: string, openai_tokens: TokenUsage, groq_tokens: TokenUsage} | null>(null);
+  const [trendResults, setTrendResults] = useState<{openai_trend: string, bedrock_trend: string, openai_tokens: TokenUsage, bedrock_tokens: TokenUsage} | null>(null);
+  const [appreciationResults, setAppreciationResults] = useState<{openai_appreciation: string, bedrock_appreciation: string, openai_tokens: TokenUsage, bedrock_tokens: TokenUsage} | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<{openai_analysis: string, bedrock_analysis: string, openai_tokens: TokenUsage, bedrock_tokens: TokenUsage} | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [showOptions, setShowOptions] = useState(false);
   const [activeTab, setActiveTab] = useState<"pricePoint" | "trend" | "appreciation" | "analysis" | null>(null);
   const [extractionTokens, setExtractionTokens] = useState<Record<string, TokenUsage>>({
     openai: { input_tokens: 0, output_tokens: 0, total_tokens: 0, call_count: 0 },
-    groq: { input_tokens: 0, output_tokens: 0, total_tokens: 0, call_count: 0 }
+    bedrock: { input_tokens: 0, output_tokens: 0, total_tokens: 0, call_count: 0 }
   });
   const [clickedOptions, setClickedOptions] = useState({
     pricePoint: false,
@@ -207,55 +207,55 @@ export default function Home() {
     );
   };
 
-  const renderCategoryTables = (categories: PropertyCategories, provider: "openai" | "groq" = "openai") => {
+  const renderCategoryTables = (categories: PropertyCategories, provider: "openai" | "bedrock" = "openai") => {
     if (!categories) return null;
     return (
       <div className="space-y-6">
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏠 Residential Flats</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.residential} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
+            <PriceTable data={categories.residential} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, "bedrock")} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏢 Office Spaces</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.office} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
+            <PriceTable data={categories.office} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, "bedrock")} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏬 Retail/Shops</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.retail} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
+            <PriceTable data={categories.retail} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, "bedrock")} />
           </div>
         </div>
         <div>
           <h3 className="text-gray-200 font-medium mb-2 flex items-center gap-2">🏞️ Land / Plots</h3>
           <div className="bg-[#0f111a] rounded-lg overflow-hidden border border-[#334155]">
-            <PriceTable data={categories.land} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, provider)} />
+            <PriceTable data={categories.land} location={results?.location || ""} provider={provider} onTokensUsed={(t) => handleTokensUsed(t, "bedrock")} />
           </div>
         </div>
       </div>
     );
   };
 
-  const getCumulativeTokens = (provider: "openai" | "groq") => {
+  const getCumulativeTokens = (provider: "openai" | "bedrock") => {
     let input = 0, output = 0, total = 0, calls = 0;
     
     if (results) {
-      const t = provider === "openai" ? results.openai_tokens : results.groq_tokens;
+      const t = provider === "openai" ? results.openai_tokens : results.bedrock_tokens;
       if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (trendResults) {
-      const t = provider === "openai" ? trendResults.openai_tokens : trendResults.groq_tokens;
+      const t = provider === "openai" ? trendResults.openai_tokens : trendResults.bedrock_tokens;
       if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (appreciationResults) {
-      const t = provider === "openai" ? appreciationResults.openai_tokens : appreciationResults.groq_tokens;
+      const t = provider === "openai" ? appreciationResults.openai_tokens : appreciationResults.bedrock_tokens;
       if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     if (analysisResults) {
-      const t = provider === "openai" ? analysisResults.openai_tokens : analysisResults.groq_tokens;
+      const t = provider === "openai" ? analysisResults.openai_tokens : analysisResults.bedrock_tokens;
       if (t) { input += t.input_tokens; output += t.output_tokens; total += t.total_tokens; calls += (t.call_count || 1); }
     }
     
@@ -264,13 +264,13 @@ export default function Home() {
       input += extractionTokens[provider].input_tokens; 
       output += extractionTokens[provider].output_tokens; 
       total += extractionTokens[provider].total_tokens; 
-      calls += extractionTokens[provider].call_count;
+      calls += (extractionTokens[provider].call_count || 0);
     }
     
     return { input_tokens: input, output_tokens: output, total_tokens: total, call_count: calls };
   };
 
-  const handleTokensUsed = (tokens: TokenUsage, provider: "openai" | "groq") => {
+  const handleTokensUsed = (tokens: TokenUsage, provider: "openai" | "bedrock") => {
     setExtractionTokens(prev => ({
       ...prev,
       [provider]: {
@@ -282,7 +282,7 @@ export default function Home() {
     }));
   };
 
-  const renderTokenUsage = (current: TokenUsage | undefined, provider: "openai" | "groq") => {
+  const renderTokenUsage = (current: TokenUsage | undefined, provider: "openai" | "bedrock") => {
     if (!current) return null;
     const cumulative = getCumulativeTokens(provider);
     return (
@@ -508,66 +508,66 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Groq Column (45%) */}
+                {/* Bedrock Column (45%) */}
                 <div className="flex-1 flex flex-col gap-6 min-w-0 w-full lg:w-1/2">
                   <h3 className="text-xl font-semibold text-center text-[#10b981] mb-2 bg-[#1a1d29] py-2 rounded-lg border border-[#334155]">
-                    ⚡ Groq
+                    ⚡ Bedrock
                   </h3>
                   
-                  {activeTab === "pricePoint" && results && results.groq_result && (
+                  {activeTab === "pricePoint" && results && results.bedrock_result && (
                     <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
                       <div className="p-4 border-b border-[#334155] bg-[#222636]">
                         <h4 className="text-md font-semibold text-gray-200">Price Point</h4>
                       </div>
                       <div className="p-4 flex-1">
-                        {results.groq_result.error_message ? (
+                        {results.bedrock_result.error_message ? (
                           <div className="text-red-400 text-sm font-medium p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                            {results.groq_result.error_message}
+                            {results.bedrock_result.error_message}
                           </div>
                         ) : (
                           <>
                             <p className="text-gray-400 text-sm font-medium mb-3">Location Identification</p>
-                            {renderLocationInfo(results.groq_result.location_identification)}
-                            {renderCategoryTables(results.groq_result.property_categories, "groq")}
+                            {renderLocationInfo(results.bedrock_result.location_identification)}
+                            {renderCategoryTables(results.bedrock_result.property_categories, "bedrock")}
                           </>
                         )}
-                        {renderTokenUsage(results.groq_tokens, "groq")}
+                        {renderTokenUsage(results.bedrock_tokens, "bedrock")}
                       </div>
                     </div>
                   )}
 
-                  {activeTab === "trend" && trendResults && trendResults.groq_trend && (
+                  {activeTab === "trend" && trendResults && trendResults.bedrock_trend && (
                     <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
                       <div className="p-4 border-b border-[#334155] bg-[#222636]">
                         <h4 className="text-md font-semibold text-gray-200">Trend Analysis</h4>
                       </div>
                       <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
-                        <div dangerouslySetInnerHTML={{ __html: trendResults.groq_trend }} />
-                        {renderTokenUsage(trendResults.groq_tokens, "groq")}
+                        <div dangerouslySetInnerHTML={{ __html: trendResults.bedrock_trend }} />
+                        {renderTokenUsage(trendResults.bedrock_tokens, "bedrock")}
                       </div>
                     </div>
                   )}
 
-                  {activeTab === "appreciation" && appreciationResults && appreciationResults.groq_appreciation && (
+                  {activeTab === "appreciation" && appreciationResults && appreciationResults.bedrock_appreciation && (
                     <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
                       <div className="p-4 border-b border-[#334155] bg-[#222636]">
                         <h4 className="text-md font-semibold text-gray-200">Appreciation Analysis</h4>
                       </div>
                       <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
-                        <div dangerouslySetInnerHTML={{ __html: appreciationResults.groq_appreciation }} />
-                        {renderTokenUsage(appreciationResults.groq_tokens, "groq")}
+                        <div dangerouslySetInnerHTML={{ __html: appreciationResults.bedrock_appreciation }} />
+                        {renderTokenUsage(appreciationResults.bedrock_tokens, "bedrock")}
                       </div>
                     </div>
                   )}
 
-                  {activeTab === "analysis" && analysisResults && analysisResults.groq_analysis && (
+                  {activeTab === "analysis" && analysisResults && analysisResults.bedrock_analysis && (
                     <div className="bg-[#1a1d29] border border-[#334155] rounded-xl overflow-hidden shadow-xl flex flex-col">
                       <div className="p-4 border-b border-[#334155] bg-[#222636]">
                         <h4 className="text-md font-semibold text-gray-200">Final Analysis</h4>
                       </div>
                       <div className="p-4 flex-1 prose prose-invert max-w-none text-gray-300">
-                        <div dangerouslySetInnerHTML={{ __html: analysisResults.groq_analysis }} />
-                        {renderTokenUsage(analysisResults.groq_tokens, "groq")}
+                        <div dangerouslySetInnerHTML={{ __html: analysisResults.bedrock_analysis }} />
+                        {renderTokenUsage(analysisResults.bedrock_tokens, "bedrock")}
                       </div>
                     </div>
                   )}
