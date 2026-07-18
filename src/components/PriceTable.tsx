@@ -361,6 +361,7 @@ export default function PriceTable({
                                   <th className="px-3 py-2 font-medium">Project Name</th>
                                   <th className="px-3 py-2 font-medium">Location</th>
                                   <th className="px-3 py-2 font-medium">Area</th>
+                                  <th className="px-3 py-2 font-medium">Area Type</th>
                                   <th className="px-3 py-2 font-medium">Unit</th>
                                   <th className="px-3 py-2 font-medium">Price</th>
                                   <th className="px-3 py-2 font-medium text-center">Action</th>
@@ -379,13 +380,18 @@ export default function PriceTable({
                                       {pl.location || location}
                                     </td>
                                     <td className="px-3 py-2 text-gray-400">
-                                      {pl.area ? `${pl.area} ${pl.area_type || ""}`.trim() : "N/A"}
+                                      {pl.area ? pl.area : "N/A"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-400 capitalize">
+                                      {pl.area_type || "NA"}
                                     </td>
                                     <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate" title={pl.title}>
                                       {pl.title || "N/A"}
                                     </td>
                                     <td className="px-3 py-2 text-emerald-400 font-medium">
-                                      {pl.currency ? `${pl.currency} ` : "₹ "}{pl.price || "N/A"}
+                                      {(pl.price || "N/A").includes(pl.currency || "₹") 
+                                        ? (pl.price || "N/A") 
+                                        : `${pl.currency || "₹"} ${pl.price || "N/A"}`}
                                     </td>
                                     <td className="px-3 py-2 text-center">
                                       <a
